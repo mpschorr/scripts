@@ -1,0 +1,128 @@
+# ------------------------- #
+# Base64 converter          #
+# written by jeelzzz        #
+# (requires skript-reflect) #
+# ------------------------- #
+
+options:
+    charset: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    padding_char: "="
+
+import:
+    java.lang.Integer
+    java.lang.Character
+
+# Utility functions
+
+function base64_getbytes(string: string, length: number=8) :: strings:
+    loop (length of {_string}) times:
+        set {_codepoint} to Character.codePointAt({_string}, (loop-value)-1)
+        set {_bytestr} to Integer.toBinaryString({_codepoint})
+        set {_bytes::%loop-value%} to base64_zfill({_bytestr}, {_length})
+    return {_bytes::*}
+
+function base64_asciichr(codepoint: number) :: string:
+    return Character.toString({_codepoint})
+
+function base64_zfill(string: string, length: number, right: boolean=false) :: string:
+    return base64_padstr({_string}, {_length}, "0", {_right})
+
+function base64_padstr(string: string, length: number, char: string, right: boolean=false) :: string:
+    loop {_length} - (length of {_string}) times:
+        if {_right} is true:
+            set {_string} to "%{_string}%%{_char}%"
+        else:
+            set {_string} to "%{_char}%%{_string}%"
+    return {_string}
+
+function base64_joinlist(list: strings) :: string:
+    set {_string} to ""
+    loop {_list::*}:
+        set {_string} to "%{_string}%%loop-value%"
+    return {_string}
+
+function base64_splitevery(list: string, every: number) :: strings:
+    loop ceil((length of {_list}) / {_every}) times:
+        set {_split::%loop-value%} to subtext of {_list} from index (((loop-value)-1)*{_every}+1) to (loop-value*{_every})
+    return {_split::*}
+
+function base64_charat(string: string, index: number) :: string:
+    set {_char} to {_string}.charAt({_index})
+    return "%{_char}%"
+
+function base64_b2i(binary: string) :: number:
+    return Integer.parseInt({_binary}, 2)
+
+function base64_i2b(number: number) :: string:
+    return Integer.toBinaryString({_number})
+
+# Syntax
+
+expression b[ase]64 enc(ode[d]|rypt[ed]) %string%:
+    return type: string
+    get:
+        # Split ascii bytes into sextets (6 bit long chunks)
+        set {_bytes::*} to base64_getbytes(expr-1)
+        set {_bytestr} to base64_joinlist({_bytes::*})
+        set {_sextets::*} to base64_splitevery({_bytestr}, 6)
+
+        # Pad last sextet with zeros
+        set {_last} to last element of {_sextets::*}
+        set {_lastindex} to size of {_sextets::*}
+        if length of {_last} < 6:
+            set {_sextets::%{_lastindex}%} to base64_zfill({_last}, 6, true)
+
+        # Turn the sextets into b64 characters
+        set {_b64} to ""
+        loop {_sextets::*}:
+            set {_int} to base64_b2i(loop-value)
+            set {_char} to base64_charat({@charset}, {_int})
+            set {_b64} to "%{_b64}%%{_char}%"
+        
+        # Pad the end so the length is a multiple of 4
+        set {_multiplelength} to ceil((length of {_b64}) / 4)*4
+        set {_b64} to base64_padstr({_b64}, {_multiplelength}, {@padding_char}, true)
+
+        return {_b64}
+
+expression b[ase]64 dec(ode[d]|rypt[ed]) %string%:
+    return type: string
+    get:
+        set {_blocks::*} to base64_splitevery(expr-1, 4)
+
+        # Fix padding
+        set {_lastindex} to size of {_blocks::*}
+        if length of {_blocks::%{_lastindex}%} < 4:
+            set {_blocks::%{_lastindex}%} to base64_padstr({_blocks::%{_lastindex}%}, 4, {@padding_char}, true)
+        # Reject malformed padding
+        if character at 1 of {_blocks::%{_lastindex}%} is {@padding_char}:
+            stop
+        if character at 2 of {_blocks::%{_lastindex}%} is {@padding_char}:
+            stop
+            
+        set {_out} to ""
+
+        # Loop all the 4-char blocks
+        loop {_blocks::*}:
+            # Decode them to their base64 binary values
+            set {_chunk} to ""
+            loop 4 times:
+                set {_char} to character at loop-value-2 of loop-value-1
+                set {_index} to (index of {_char} in {@charset}) - 1
+                if {_char} is {@padding_char}:
+                    set {_binary} to "000000"
+                else:
+                    set {_binary} to base64_i2b({_index})
+                    set {_binary} to base64_padstr({_binary}, 6, "0")
+                set {_chunk} to "%{_chunk}%%{_binary}%"
+
+            # Split into bytes and turn to ascii
+            set {_chunkbytes::*} to base64_splitevery({_chunk}, 8)
+            loop {_chunkbytes::*}:
+                if loop-value-2 is "00000000":
+                    continue
+                set {_i} to base64_b2i(loop-value-2)
+                set {_char} to base64_asciichr({_i})
+                set {_out} to "%{_out}%%{_char}%"
+
+        return {_out}
