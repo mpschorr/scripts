@@ -1,0 +1,90 @@
+# Barebones FAWE (FastAsyncWorldEdit) addon (only has cuboid filling, patterns)
+# - by jeelzzz
+# - requires: skript-reflect, FAWE
+
+# ------------------
+# # EXAMPLE:
+#
+# command /resetfloor:
+#     trigger:
+#         switch fawe world to world "voidworld"
+#
+#         # itemtype fill
+#         set fawe pos 1 to location(25, 64, 25)
+#         set fawe pos 2 to location(0, 64, -25)
+#         fill fawe selection with (red wool, orange wool, yellow wool, lime wool, light blue wool, blue wool, purple wool, pink wool)
+#
+#         # pattern fill
+#         set fawe pos 1 to location(-1, 64, 25)
+#         set fawe pos 2 to location(-25, 64, -25)
+#         fill fawe selection with pattern "75%%stone,20%%coal_ore,5%%iron_ore"
+#
+# ----------------------
+
+import:
+    com.sk89q.worldedit.bukkit.BukkitAdapter
+    com.sk89q.worldedit.extension.input.ParserContext
+    com.sk89q.worldedit.regions.CuboidRegion
+    com.sk89q.worldedit.WorldEdit
+
+# Functions
+
+function FAWE_ChangeWorld(worldname: world):
+    if {-fawe::session} is set:
+        {-fawe::session}.close()
+    set {_world} to BukkitAdapter.adapt({_worldname})
+    set {-fawe::session} to WorldEdit.getInstance().newEditSession({_world})
+
+function FAWE_FillSelection(patternstr: string):
+    if {-fawe::pos1} is not set:
+        stop
+    if {-fawe::pos2} is not set:
+        stop
+
+    set {_pos1} to BukkitAdapter.asBlockVector({-fawe::pos1})
+    set {_pos2} to BukkitAdapter.asBlockVector({-fawe::pos2})
+    set {_pattern} to {-fawe::pf}.parseFromInput({_patternstr}, {-fawe::pc})
+    
+    set {_region} to new CuboidRegion({_pos1}, {_pos2})
+    {-fawe::session}.setBlocks({_region}, {_pattern})
+    {-fawe::session}.flushQueue()
+
+# -- Reflection
+
+on load:
+    FAWE_ChangeWorld(world "world")
+    set {-fawe::pf} to WorldEdit.getInstance().getPatternFactory()
+    set {-fawe::pc} to new ParserContext()
+    {-fawe::pc}.setActor(BukkitAdapter.adapt(console))
+
+# Effects
+
+effect switch fawe world to %world%:
+    trigger:
+        FAWE_ChangeWorld(expr-1)
+
+effect fill fawe sel[ection] [with] %itemtypes%:
+    trigger:
+        set {_patternstr} to join (raw names of exprs-1) with ","
+        replace "minecraft:" in {_patternstr} with ""
+        FAWE_FillSelection({_patternstr})
+
+effect fill fawe sel[ection] [with] pattern %string%:
+    trigger:
+        FAWE_FillSelection(expr-1)
+
+# Expressions
+
+expression fawe (pos[ition]|corner)[ ]1:
+    return type: location
+    get:
+        return {-fawe::pos1}
+    set:
+        set {-fawe::pos1} to change value
+
+expression fawe (pos[ition]|corner)[ ]2:
+    return type: location
+    get:
+        return {-fawe::pos2}
+    set:
+        set {-fawe::pos2} to change value
